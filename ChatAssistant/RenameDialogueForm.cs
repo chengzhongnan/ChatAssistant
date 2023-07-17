@@ -10,18 +10,18 @@ using System.Windows.Forms;
 
 namespace ChatAssistant
 {
-    public partial class RenameGroupForm : Form
+    public partial class RenameDialogueForm : Form
     {
-        public RenameGroupForm(bool bNew = false)
+        public RenameDialogueForm(bool bNew = false)
         {
             InitializeComponent();
 
             if (bNew)
             {
-                this.Text = "新增分组";
+                this.Text = "新增对话";
             }
         }
 
-        public string GroupName { get => textBox1.Text; set => textBox1.Text = value; }
+        public string DialogueName { get => textBox1.Text; set => textBox1.Text = value; }
     }
 }

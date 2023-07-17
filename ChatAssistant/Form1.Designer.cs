@@ -42,6 +42,7 @@
             this.SplitGroupMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.DeleteGroupMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.RenameGroupMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.renameDialogueMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.splitContainer2 = new System.Windows.Forms.SplitContainer();
             this.tb_ShowMessage = new System.Windows.Forms.TextBox();
             this.splitContainer3 = new System.Windows.Forms.SplitContainer();
@@ -122,72 +123,80 @@
             this.NewGroupMenuItem,
             this.SplitGroupMenuItem,
             this.DeleteGroupMenuItem,
-            this.RenameGroupMenuItem});
+            this.RenameGroupMenuItem,
+            this.renameDialogueMenuItem});
             this.contextMenuStrip1.Name = "contextMenuStrip1";
-            this.contextMenuStrip1.Size = new System.Drawing.Size(140, 202);
+            this.contextMenuStrip1.Size = new System.Drawing.Size(181, 246);
             this.contextMenuStrip1.Opening += new System.ComponentModel.CancelEventHandler(this.contextMenuStrip1_Opening);
             // 
             // NewActorMenuItem
             // 
             this.NewActorMenuItem.Name = "NewActorMenuItem";
-            this.NewActorMenuItem.Size = new System.Drawing.Size(139, 22);
+            this.NewActorMenuItem.Size = new System.Drawing.Size(180, 22);
             this.NewActorMenuItem.Text = "新建角色";
             this.NewActorMenuItem.Click += new System.EventHandler(this.NewActorMenuItem_Click);
             // 
             // DeleteActorMenuItem
             // 
             this.DeleteActorMenuItem.Name = "DeleteActorMenuItem";
-            this.DeleteActorMenuItem.Size = new System.Drawing.Size(139, 22);
+            this.DeleteActorMenuItem.Size = new System.Drawing.Size(180, 22);
             this.DeleteActorMenuItem.Text = "删除角色";
             this.DeleteActorMenuItem.Click += new System.EventHandler(this.DeleteActorMenuItem_Click);
             // 
             // EditPromptMenuItem
             // 
             this.EditPromptMenuItem.Name = "EditPromptMenuItem";
-            this.EditPromptMenuItem.Size = new System.Drawing.Size(139, 22);
+            this.EditPromptMenuItem.Size = new System.Drawing.Size(180, 22);
             this.EditPromptMenuItem.Text = "编辑提示词";
             this.EditPromptMenuItem.Click += new System.EventHandler(this.EditPromptMenuItem_Click);
             // 
             // NewDialogueMenuItem
             // 
             this.NewDialogueMenuItem.Name = "NewDialogueMenuItem";
-            this.NewDialogueMenuItem.Size = new System.Drawing.Size(139, 22);
+            this.NewDialogueMenuItem.Size = new System.Drawing.Size(180, 22);
             this.NewDialogueMenuItem.Text = "新建对话";
             this.NewDialogueMenuItem.Click += new System.EventHandler(this.NewDialogueMenuItem_Click);
             // 
             // DeleteDialogueMenuItem
             // 
             this.DeleteDialogueMenuItem.Name = "DeleteDialogueMenuItem";
-            this.DeleteDialogueMenuItem.Size = new System.Drawing.Size(139, 22);
+            this.DeleteDialogueMenuItem.Size = new System.Drawing.Size(180, 22);
             this.DeleteDialogueMenuItem.Text = "删除对话";
             this.DeleteDialogueMenuItem.Click += new System.EventHandler(this.DeleteDialogueMenuItem_Click);
             // 
             // NewGroupMenuItem
             // 
             this.NewGroupMenuItem.Name = "NewGroupMenuItem";
-            this.NewGroupMenuItem.Size = new System.Drawing.Size(139, 22);
+            this.NewGroupMenuItem.Size = new System.Drawing.Size(180, 22);
             this.NewGroupMenuItem.Text = "新建分组";
             this.NewGroupMenuItem.Click += new System.EventHandler(this.NewGroupMenuItem_Click);
             // 
             // SplitGroupMenuItem
             // 
             this.SplitGroupMenuItem.Name = "SplitGroupMenuItem";
-            this.SplitGroupMenuItem.Size = new System.Drawing.Size(139, 22);
+            this.SplitGroupMenuItem.Size = new System.Drawing.Size(180, 22);
             this.SplitGroupMenuItem.Text = "拆分分组";
             // 
             // DeleteGroupMenuItem
             // 
             this.DeleteGroupMenuItem.Name = "DeleteGroupMenuItem";
-            this.DeleteGroupMenuItem.Size = new System.Drawing.Size(139, 22);
+            this.DeleteGroupMenuItem.Size = new System.Drawing.Size(180, 22);
             this.DeleteGroupMenuItem.Text = "删除分组";
             this.DeleteGroupMenuItem.Click += new System.EventHandler(this.DeleteGroupMenuItem_Click);
             // 
             // RenameGroupMenuItem
             // 
             this.RenameGroupMenuItem.Name = "RenameGroupMenuItem";
-            this.RenameGroupMenuItem.Size = new System.Drawing.Size(139, 22);
+            this.RenameGroupMenuItem.Size = new System.Drawing.Size(180, 22);
             this.RenameGroupMenuItem.Text = "重命名分组";
             this.RenameGroupMenuItem.Click += new System.EventHandler(this.RenameGroupMenuItem_Click);
+            // 
+            // renameDialogueMenuItem
+            // 
+            this.renameDialogueMenuItem.Name = "renameDialogueMenuItem";
+            this.renameDialogueMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.renameDialogueMenuItem.Text = "重命名对话";
+            this.renameDialogueMenuItem.Click += new System.EventHandler(this.renameDialogueMenuItem_Click);
             // 
             // splitContainer2
             // 
@@ -264,7 +273,7 @@
             this.关于ToolStripMenuItem});
             this.menuStrip1.Location = new System.Drawing.Point(9, 0);
             this.menuStrip1.Name = "menuStrip1";
-            this.menuStrip1.Size = new System.Drawing.Size(218, 24);
+            this.menuStrip1.Size = new System.Drawing.Size(98, 24);
             this.menuStrip1.TabIndex = 2;
             this.menuStrip1.Text = "menuStrip1";
             // 
@@ -279,7 +288,7 @@
             // 选项ToolStripMenuItem
             // 
             this.选项ToolStripMenuItem.Name = "选项ToolStripMenuItem";
-            this.选项ToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.选项ToolStripMenuItem.Size = new System.Drawing.Size(100, 22);
             this.选项ToolStripMenuItem.Text = "选项";
             this.选项ToolStripMenuItem.Click += new System.EventHandler(this.选项ToolStripMenuItem_Click);
             // 
@@ -317,6 +326,7 @@
             this.MainMenuStrip = this.menuStrip1;
             this.Name = "MainForm";
             this.Text = "MainForm";
+            this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.MainForm_FormClosed);
             this.Load += new System.EventHandler(this.MainForm_Load);
             this.splitContainer1.Panel1.ResumeLayout(false);
             this.splitContainer1.Panel2.ResumeLayout(false);
@@ -369,5 +379,6 @@
         private ToolStripMenuItem NewDialogueMenuItem;
         private ToolStripMenuItem EditPromptMenuItem;
         private ToolStripMenuItem RenameGroupMenuItem;
+        private ToolStripMenuItem renameDialogueMenuItem;
     }
 }

@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using System.Linq;
+using Microsoft.Data.Sqlite;
+using SQLitePCL;
 
 namespace ChatAssistant
 {
@@ -17,31 +19,33 @@ namespace ChatAssistant
         private void MainForm_Load(object sender, EventArgs e)
         {
             InitChatGPT();
-            InitPrompt();
+            // InitPrompt();
+            InitSqliteDB();
         }
 
         private IChatCompletion chatGPT = null;
         private TreeNode _CurrentNode = null;
         private TreeNode lastClickNode = null;
+        private SqliteConnection _connection;
 
         private string _CategoryFile = "Category.xml";
         private string _CategoryBakFile = "Category_bak.xml";
-        private string _DialoguaPath = "./dialogue/";
+        private string _DialoguaFile = "dialogue.db";
 
         private void InitChatGPT()
         {
             if (Global.GPTVersion == GPT_Version.GPT_AZure_3_5)
             {
                 chatGPT = new AzureChatCompletion(
-                "**********",
-                "***********************",
-                "***********************");
+                "*******",
+                "*******",
+                "*******");
             }
 
             if (Global.GPTVersion == GPT_Version.GPT_OpenAI_4)
             {
-                chatGPT = new OpenAIChatCompletion("********",
-                    "********************************************");
+                chatGPT = new OpenAIChatCompletion("*******",
+                    "*******");
             }
         }
 
@@ -63,6 +67,7 @@ namespace ChatAssistant
         {
             public string Prompt { get; set; } = string.Empty;
             public string Name { get; set; } = string.Empty;
+            public int Id { get; set; }
         }
 
         class TreeViewGroupTag
@@ -72,14 +77,354 @@ namespace ChatAssistant
 
         class TreeViewItemTag
         {
+            public int Id { get; set; }
             public string Prompt { get; set; } = string.Empty;
             public string Name { get; set; } = string.Empty;
             public ChatHistory Chat_History { get; set; } = new ChatHistory();
+            public int ActorId { get; set; }
         }
 
         private void InitPrompt()
         {
             ReloadPrompt();
+        }
+
+        private void InitSqliteDB()
+        {
+            _connection = new SqliteConnection($"Data Source={_DialoguaFile}");
+            _connection.Open();
+                
+            ReloadActors(_connection);
+            ReloadDialogues(_connection);
+        }
+
+        private void ReloadActors(SqliteConnection conn)
+        {
+            var rootNode = ClearPromptTreeNode();
+            if (rootNode == null)
+            {
+                return;
+            }
+
+            var groups = GetAllGroups(conn);
+
+            foreach(var group in groups)
+            {
+                TreeNode treeNodeGroup = new TreeNode(group);
+                TreeViewGroupTag groupTag = new TreeViewGroupTag() { Name = group };
+                treeNodeGroup.Tag = groupTag;
+                rootNode.Nodes.Add(treeNodeGroup);
+
+                var actors = GetGroupActors(group);
+                foreach(var actor in actors)
+                {
+                    TreeNode treeNodeRole = new TreeNode(actor.Name);
+                    treeNodeRole.Tag = actor;
+
+                    treeNodeGroup.Nodes.Add(treeNodeRole);
+                }
+            }
+
+            rootNode.Expand();
+        }
+
+        private void ReloadDialogues(SqliteConnection conn)
+        {
+            var command = conn.CreateCommand();
+            // 取得所有对话
+            command.CommandText = @"select id, actorid, name from dialogue";
+            List<TreeViewItemTag> itemTagList = new List<TreeViewItemTag>();
+            using (var reader = command.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    var id = reader.GetInt32(0);
+                    if (reader.IsDBNull(1) || reader.IsDBNull(2)) continue;
+
+                    var actorid = reader.GetInt32(1);
+                    var name = reader.GetString(2);
+
+                    TreeViewItemTag itemTag = new TreeViewItemTag()
+                    {
+                        Id = id,
+                        Name = name,
+                        ActorId = actorid
+                    };
+
+                    itemTagList.Add(itemTag);
+                }
+            }
+
+            ReloadDialogContext(itemTagList);
+        }
+
+        private void ReloadDialogContext(List<TreeViewItemTag> itemTagList)
+        {
+            var rootNode = promptTreeView.Nodes[0];
+            foreach(TreeNode groupNode in rootNode.Nodes)
+            {
+                TreeViewGroupTag treeViewGroupTag = groupNode.Tag as TreeViewGroupTag;
+                if (treeViewGroupTag == null) continue;
+
+                foreach(TreeNode actorNode in groupNode.Nodes)
+                {
+                    TreeViewTag actorTag = actorNode.Tag as TreeViewTag;
+                    if (actorTag == null) continue;
+
+                    var dialogList = itemTagList.Where(a => a.ActorId == actorTag.Id).ToList();
+                    foreach(var dialog in dialogList)
+                    {
+                        var chatHistory = LoadDialogMessage(dialog.Id);
+                        RebuildDialogueNode(chatHistory, dialog, actorNode);
+                    }
+                }
+            }
+        }
+
+        private ChatHistory LoadDialogMessage(int dialogueId)
+        {
+            var cmd = _connection.CreateCommand();
+            cmd.CommandText = $"select id, role, message from chatmessage where dialogueid={dialogueId}";
+
+            using(var reader = cmd.ExecuteReader())
+            {
+                ChatHistory chatHistory = new ChatHistory();
+                while (reader.Read())
+                {
+                    var id = reader.GetInt32(0);
+                    if (reader.IsDBNull(1) || reader.IsDBNull(2)) continue;
+                    var role = reader.GetString(1);
+                    var message = reader.GetString(2);
+
+                    if (Enum.TryParse(typeof(ChatHistory.AuthorRoles), role, out var roleEnum))
+                    {
+                        var roleid = (ChatHistory.AuthorRoles)roleEnum;
+                        switch (roleid)
+                        {
+                            case ChatHistory.AuthorRoles.Assistant:
+                                chatHistory.AddAssistantMessage(message);
+                                break;
+                            case ChatHistory.AuthorRoles.User:
+                                chatHistory.AddUserMessage(message);
+                                break;
+                            case ChatHistory.AuthorRoles.System:
+                                chatHistory.AddSystemMessage(message);
+                                break;
+                            case ChatHistory.AuthorRoles.Unknown:
+                                break;
+                        }
+                    }
+                }
+
+                return chatHistory;
+            }
+        }
+
+        private void RebuildDialogueNode(ChatHistory chatMessages, TreeViewItemTag tagDialogue, TreeNode actorNode)
+        {
+            // 加入系统提示词
+            TreeViewTag tagActor = actorNode.Tag as TreeViewTag;
+            if (tagActor == null)
+            {
+                return;
+            }
+
+            chatMessages.AddSystemMessage(tagActor.Prompt);
+            tagDialogue.Chat_History = chatMessages;
+            tagDialogue.Prompt = tagActor.Prompt;
+
+            TreeNode dialogueNode = new TreeNode(tagDialogue.Name);
+            dialogueNode.Tag = tagDialogue;
+
+            actorNode.Nodes.Add(dialogueNode);
+        }
+
+        private void InsertChatMessage(int dialogueId, string roleId, string message)
+        {
+            var cmd = _connection.CreateCommand();
+            cmd.CommandText = "INSERT INTO \"chatmessage\"(\"dialogueid\", \"role\", \"message\") VALUES(@dialogueid, @role, @message)";
+            cmd.Parameters.AddWithValue("@dialogueid", dialogueId);
+            cmd.Parameters.AddWithValue("@role", roleId);
+            cmd.Parameters.AddWithValue("@message", message);
+
+            cmd.ExecuteNonQuery();
+        }
+
+        private void renameDialogue(TreeViewItemTag itemTag, string newName)
+        {
+            var cmd = _connection.CreateCommand();
+            cmd.CommandText = "update dialogue set name=@name where id=@id";
+            cmd.Parameters.AddWithValue("@name", newName);
+            cmd.Parameters.AddWithValue("@id", itemTag.Id);
+
+            cmd.ExecuteNonQuery();
+        }
+
+        private List<string> GetAllGroups(SqliteConnection conn)
+        {
+            List<string> groups = new List<string>();
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT DISTINCT \"group\" FROM \"actor\"";
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    var group = reader.GetString(0);
+                    groups.Add(group);
+                }
+            }
+            return groups;
+        }
+
+        private List<TreeViewTag> GetGroupActors(string groupName)
+        {
+            List<TreeViewTag> results = new List<TreeViewTag>();
+            var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT id, actor, prompt FROM \"actor\" where \"group\"=@group";
+            cmd.Parameters.AddWithValue("@group", groupName);
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    TreeViewTag tag = new TreeViewTag();
+                    tag.Id = reader.GetInt32(0);
+                    if (reader.IsDBNull(1))
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        tag.Name = reader.GetString(1);
+                    }
+                    if (!reader.IsDBNull(2))
+                    {
+                        tag.Prompt = reader.GetString(2);
+                    }
+
+                    results.Add(tag);
+                }
+            }
+
+            return results;
+        }
+
+        private void GetDialogueTree(SqliteCommand cmd, int treeid)
+        {
+            cmd.CommandText = @"select group, actor, dialogue, prompt from dialogueTree where id = $id";
+            cmd.Parameters.AddWithValue("$id", treeid);
+
+            using(var reader = cmd.ExecuteReader())
+            {
+                while( reader.Read())
+                {
+                    var group = reader.GetString(0);
+                    var actor = reader.GetString(1);
+                    var dialogue = reader.GetString(2);
+                    var prompt = reader.GetString(3);
+
+                    return;
+                }
+            }
+        }
+
+        private int InsertNewDialogue(int actorid, string name)
+        {
+            var cmd = _connection.CreateCommand();
+            cmd.CommandText = "INSERT INTO \"dialogue\"(\"actorid\", \"name\") VALUES(@actorid, @name); SELECT last_insert_rowid();";
+            cmd.Parameters.AddWithValue("@actorid", actorid);
+            cmd.Parameters.AddWithValue("@name", name);
+
+            using(var reader = cmd.ExecuteReader())
+            {
+                while(reader.Read())
+                {
+                    var id = reader.GetInt32(0);
+                    return id;
+                }
+            }
+
+            return 0;
+        }
+
+        private void RemoveGroup(TreeViewGroupTag tag)
+        {
+            var cmd = _connection.CreateCommand();
+            cmd.CommandText = "delete from actor where \"group\"=@group";
+            cmd.Parameters.AddWithValue("@group", tag.Name);
+
+            cmd.ExecuteNonQuery();
+        }
+
+        private void RemoveActor(int actorId)
+        {
+            var cmd = _connection.CreateCommand();
+            cmd.CommandText = $"delete from actor where id={actorId}";
+
+            cmd.ExecuteNonQuery();
+        }
+
+        private void UpdateActor(string groupName, TreeViewTag actorTag)
+        {
+            var cmd = _connection.CreateCommand();
+            cmd.CommandText = "update actor set \"group\"=@group, actor=@actor, prompt=@prompt where id=@id";
+            cmd.Parameters.AddWithValue("@group", groupName);
+            cmd.Parameters.AddWithValue("@actor", actorTag.Name);
+            cmd.Parameters.AddWithValue("@prompt", actorTag.Prompt);
+            cmd.Parameters.AddWithValue("@id", actorTag.Id);
+
+            cmd.ExecuteNonQuery();
+        }
+
+        private int InsertActor(string groupName, string actorName, string prompt)
+        {
+            var cmd = _connection.CreateCommand();
+            cmd.CommandText = "INSERT INTO \"actor\"(\"group\", \"actor\", \"prompt\") VALUES(@group, @actor, @prompt); SELECT last_insert_rowid(); ";
+            cmd.Parameters.AddWithValue("@prompt", prompt);
+            cmd.Parameters.AddWithValue("@actor", actorName);
+            cmd.Parameters.AddWithValue("@group", groupName);
+
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    var id = reader.GetInt32(0);
+
+                    return id;
+                }
+            }
+
+            return 0;
+        }
+
+        private void UpdateGroupName(string oldName, string newName)
+        {
+            var actors = GetGroupActors(oldName);
+            var cmd = _connection.CreateCommand();
+            cmd.CommandText = "update actor set \"group\"=@group where \"group\"=@oldName";
+            cmd.Parameters.AddWithValue("@group", newName);
+            cmd.Parameters.AddWithValue("@oldName", oldName);
+
+            cmd.ExecuteNonQuery();
+        }
+
+        private bool AddNewGroup(string groupName)
+        {
+            var cmd = _connection.CreateCommand();
+
+            cmd.CommandText = "SELECT id FROM actor where \"group\"=@group";
+            cmd.Parameters.AddWithValue("@group", groupName);
+            using(var reader = cmd.ExecuteReader())
+            {
+                while(reader.Read())
+                {
+                    return false;
+                }
+            }
+
+            cmd.CommandText = "INSERT INTO actor(\"group\") VALUES(@group)";
+            cmd.ExecuteNonQuery();
+
+            return true;
         }
 
         private void ReloadPrompt()
@@ -220,11 +565,15 @@ namespace ChatAssistant
             tag.Chat_History.AddUserMessage(tb_UserMessage.Text);
 
             ShowTreeViewTag(tag);
+            // 保存对话
+            InsertChatMessage(tag.Id, AuthorRole.User.Label, tb_UserMessage.Text);
 
             var reply = await chatGPT.GenerateMessageAsync(tag.Chat_History);
             tag.Chat_History.AddAssistantMessage(reply);
 
             ShowTreeViewTag(tag);
+            // 保存对话
+            InsertChatMessage(tag.Id, AuthorRole.Assistant.Label, reply);
         }
 
         private async void btnSend_Click(object sender, EventArgs e)
@@ -248,11 +597,21 @@ namespace ChatAssistant
             var tag = _CurrentNode.Tag as TreeViewTag;
             if (tag != null)
             {
+                var dialogueCount = _CurrentNode.Nodes.Count;
+                var name = $"对话{dialogueCount + 1}";
+                var dialogueId = InsertNewDialogue(tag.Id, name);
+                if (dialogueId <= 0)
+                {
+                    MessageBox.Show("插入对话失败！", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
                 // 新建一个子Item
-                TreeNode node = new TreeNode("对话1");
+                TreeNode node = new TreeNode(name);
                 TreeViewItemTag itemTag = new TreeViewItemTag()
                 {
-                    Name = tag.Name,
+                    Id = dialogueId,
+                    Name = name,
                     Prompt = tag.Prompt
                 };
                 itemTag.Chat_History = chatGPT.CreateNewChat(tag.Name);
@@ -307,11 +666,19 @@ namespace ChatAssistant
             }
 
             var dialogueCount = actorNode.Nodes.Count;
+            var name = $"对话{dialogueCount + 1}";
+            var dialogueId = InsertNewDialogue(tag.Id, name);
+            if (dialogueId <= 0)
+            {
+                MessageBox.Show("插入对话失败！", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
 
             // 新建一个子Item
-            TreeNode node = new TreeNode($"对话{dialogueCount + 1}");
+            TreeNode node = new TreeNode(name);
             TreeViewItemTag itemTag = new TreeViewItemTag()
             {
+                Id = dialogueId,
                 Name = dialogueTag.Name,
                 Prompt = dialogueTag.Prompt
             };
@@ -368,7 +735,7 @@ namespace ChatAssistant
                 DeleteGroupMenuItem.Visible = false;
                 EditPromptMenuItem.Visible = false;
                 RenameGroupMenuItem.Visible = false;
-
+                renameDialogueMenuItem.Visible = false;
             }
             else if (tag is TreeViewGroupTag)
             {
@@ -382,6 +749,7 @@ namespace ChatAssistant
                 DeleteGroupMenuItem.Visible = true;
                 EditPromptMenuItem.Visible = false;
                 RenameGroupMenuItem.Visible = true;
+                renameDialogueMenuItem.Visible = false;
             }
             else if (tag is TreeViewTag)
             {
@@ -395,6 +763,7 @@ namespace ChatAssistant
                 DeleteGroupMenuItem.Visible = false;
                 EditPromptMenuItem.Visible = true;
                 RenameGroupMenuItem.Visible = false;
+                renameDialogueMenuItem.Visible = false;
             }
             else if (tag is TreeViewItemTag)
             {
@@ -408,6 +777,7 @@ namespace ChatAssistant
                 DeleteGroupMenuItem.Visible = false;
                 EditPromptMenuItem.Visible = false;
                 RenameGroupMenuItem.Visible = false;
+                renameDialogueMenuItem.Visible = true;
             }
         }
 
@@ -565,7 +935,7 @@ namespace ChatAssistant
             }
 
             // 保存分类文件
-            SaveCatelogyFile();
+            // SaveCatelogyFile();
         }
 
         private TreeNode FindSubNodeByName(TreeNode node, string name)
@@ -694,16 +1064,38 @@ namespace ChatAssistant
         {
             var currentNode = promptTreeView.TopNode;
 
-            TreeNode node = new TreeNode("新分组");
-            TreeViewGroupTag tag = new TreeViewGroupTag()
+            RenameGroupForm renameGroupForm = new RenameGroupForm(true);
+            if (renameGroupForm.ShowDialog() == DialogResult.OK)
             {
-                Name = node.Text
-            };
+                if (!string.IsNullOrWhiteSpace(renameGroupForm.GroupName))
+                {
+                    var bInsert = AddNewGroup(renameGroupForm.GroupName);
+                    if (bInsert)
+                    {
+                        TreeNode node = new TreeNode(renameGroupForm.GroupName);
+                        TreeViewGroupTag tag = new TreeViewGroupTag()
+                        {
+                            Name = node.Text
+                        };
 
-            node.Tag = tag;
-            currentNode.Nodes.Add(node);
+                        node.Tag = tag;
+                        currentNode.Nodes.Add(node);
+                    }
+                    else
+                    {
+                        MessageBox.Show("插入分组失败！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+            
         }
 
+        /// <summary>
+        /// 保存对话上下文
+        /// </summary>
+        /// <param name="groupTag"></param>
+        /// <param name="actorTag"></param>
+        /// <param name="actorNode"></param>
         private void SaveDialogueContext(TreeViewGroupTag groupTag, TreeViewTag actorTag, TreeNode actorNode)
         {
 
@@ -743,12 +1135,6 @@ namespace ChatAssistant
                     xActor.Value = tagActor.Prompt;
                     
                     xGroup.Add(xActor);
-
-                    // 下面的是对话节点
-                    if (child.Nodes.Count > 0)
-                    {
-                        SaveDialogueContext(tag, tagActor, child);
-                    }
                 }
                 xRoot.Add(xGroup);
             }
@@ -782,16 +1168,23 @@ namespace ChatAssistant
                 return;
             }
 
+            var groupTag = groupNode.Tag as TreeViewGroupTag;
+
             EditActorPromptForm editActorPromptForm = new EditActorPromptForm();
             if (editActorPromptForm.ShowDialog() == DialogResult.OK && !string.IsNullOrEmpty(editActorPromptForm.ActorName))
             {
+                var newActorId = InsertActor(groupTag.Name, editActorPromptForm.ActorName, editActorPromptForm.Prompt);
+                if (newActorId <= 0)
+                {
+                    MessageBox.Show("插入数据失败！", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
                 TreeNode treeNode = new TreeNode(editActorPromptForm.ActorName);
-                TreeViewTag treeViewTag = new TreeViewTag() { Name = editActorPromptForm.ActorName, Prompt = editActorPromptForm.Prompt };
+                TreeViewTag treeViewTag = new TreeViewTag() { Name = editActorPromptForm.ActorName, Prompt = editActorPromptForm.Prompt, Id = newActorId };
                 treeNode.Tag = treeViewTag;
 
                 groupNode.Nodes.Add(treeNode);
-
-                SaveCatelogyFile();
             }
         }
 
@@ -809,10 +1202,12 @@ namespace ChatAssistant
 
             if (MessageBox.Show("是否确实要删除该角色", "提示", MessageBoxButtons.YesNo) == DialogResult.Yes)
             {
+                var actorTag = _CurrentNode.Tag as TreeViewTag;
+                // 从数据库中删除
+                RemoveActor(actorTag.Id);
+
                 _CurrentNode.Parent.Nodes.Remove(_CurrentNode);
                 _CurrentNode = null;
-
-                SaveCatelogyFile();
             }
         }
 
@@ -839,7 +1234,9 @@ namespace ChatAssistant
                 tag.Name = editActorPromptForm.ActorName;
                 tag.Prompt = editActorPromptForm.Prompt;
 
-                SaveCatelogyFile();
+                var groupTag = _CurrentNode.Parent.Tag as TreeViewGroupTag;
+
+                UpdateActor(groupTag.Name, tag);
             }
         }
 
@@ -855,11 +1252,15 @@ namespace ChatAssistant
                 return;
             }
 
-            if (MessageBox.Show("是否确定删除当前分组？","提示", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            if (MessageBox.Show("是否确定删除当前分组？删除分组以后将删除分组下所有角色","提示", MessageBoxButtons.YesNo) == DialogResult.Yes)
             {
+                // 从数据库中删除分组
+                TreeViewGroupTag tag = _CurrentNode.Tag as TreeViewGroupTag;
+                RemoveGroup(tag);
+
                 promptTreeView.Nodes.Remove(_CurrentNode);
                 _CurrentNode = null;
-                SaveCatelogyFile();
+                // SaveCatelogyFile();
             }
         }
 
@@ -877,6 +1278,8 @@ namespace ChatAssistant
 
             var tag = _CurrentNode.Tag as TreeViewGroupTag;
 
+            var oldName = tag.Name;
+
             RenameGroupForm form = new RenameGroupForm();
             form.GroupName = tag.Name;
 
@@ -885,7 +1288,8 @@ namespace ChatAssistant
                 tag.Name = form.GroupName;
                 _CurrentNode.Text = form.GroupName;
 
-                SaveCatelogyFile();
+                // 更新数据库
+                UpdateGroupName(oldName, tag.Name);
             }
         }
 
@@ -895,6 +1299,41 @@ namespace ChatAssistant
             configForm.ShowDialog();
 
             InitChatGPT();
+        }
+
+        private void MainForm_FormClosed(object sender, FormClosedEventArgs e)
+        {
+            if (_connection != null)
+            {
+                _connection.Close();
+                _connection = null;
+                _CurrentNode = null;
+            }
+        }
+
+        private void renameDialogueMenuItem_Click(object sender, EventArgs e)
+        {
+            if (_CurrentNode == null || _CurrentNode.Tag == null)
+            {
+                return;
+            }
+
+            if (!(_CurrentNode.Tag is TreeViewItemTag))
+            {
+                return;
+            }
+
+            var tag = _CurrentNode.Tag as TreeViewItemTag;
+
+            RenameDialogueForm renameDialogueForm = new RenameDialogueForm();
+            renameDialogueForm.DialogueName = tag.Name;
+            if (renameDialogueForm.ShowDialog() == DialogResult.OK)
+            {
+                renameDialogue(tag, renameDialogueForm.DialogueName);
+                tag.Name = renameDialogueForm.DialogueName;
+
+                _CurrentNode.Text = renameDialogueForm.DialogueName;
+            }
         }
     }
 }
