@@ -22,13 +22,15 @@ namespace ChatAssistant
 
         }
 
-        public void Init(string actorName, string prompt)
+        public void Init(string actorName, string prompt, bool recoverContext)
         {
             tbActorName.Text = actorName;
             tbPrompt.Text = prompt;
+            checkBox1.Checked = recoverContext;
         }
 
         public string ActorName => tbActorName.Text;
         public string Prompt => tbPrompt.Text;
+        public bool RecoverContext => checkBox1.Checked;
     }
 }
