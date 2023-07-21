@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .box {
+            border: 1px solid #ddd;
+            padding-left: 6px;
+            padding-right: 6px;
+            padding-top: 4px;
+            border-radius: 4px;
+            margin-top: 2px;
+            margin-bottom: 3px;
+        }
+
+        .code-box {
+            background-color: #f8f8f8;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+
+        pre.code {
+            color: white;
+            background: rgb(20, 20, 20);
+            font-family: Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
+            font-size: 1em;
+            text-align: left;
+            text-shadow: black 0px -0.1em 0.2em;
+            white-space: pre;
+            word-spacing: normal;
+            word-break: normal;
+            overflow-wrap: normal;
+            line-height: 1.5;
+            tab-size: 4;
+            hyphens: none;
+            border-radius: 0.5em;
+            border: 0.3em solid rgb(84, 84, 84);
+            box-shadow: black 1px 1px 0.5em inset;
+            margin: 0px;
+            overflow: auto;
+            padding: 1em;
+        }
+    </style>
+</head>
+<body>
+    <div id="content" class="box"></div>
+	
+	<script>
+        function showCode(code) {
+            let box = document.createElement('div');
+            box.className = 'code-box';
+            let pre = document.createElement('pre');
+            pre.className = 'code';
+            pre.textContent = code;
+            box.append(pre);
+            return box;
+        }
+
+        function showText(text) {
+            let p = document.createElement('p');
+            p.textContent = text;
+            return p;
+        }
+
+        function showContentArray(header, arrayContent) {
+            showContent(header);
+
+            for (let showString of arrayContent) {
+                showContent(showString);
+            }
+
+            window.scrollTo(0, document.body.scrollHeight);
+        }
+
+        function showContent(showString) {
+            let showRootElement = document.getElementById('content');
+
+            let showContentEle = document.createElement('div');
+            showContentEle.className = 'box';
+
+            let lines = showString.split('\n');
+            let codeFlag = "\`\`\`";
+            let regex = new RegExp(codeFlag);
+            let code;
+            for (let line of lines) {
+                if (code == null) {
+                    // 不是代码
+                    if (regex.test(line)) {
+                        let index = line.indexOf(codeFlag);
+                        code = line.substring(index) + '\n';
+                    }
+                    else {
+                        let textEle = showText(line);
+                        showContentEle.appendChild(textEle);
+                    }
+                }
+                else {
+                    // 是代码，再次匹配到，就要结束代码
+                    if (regex.test(line)) {
+                        let index = line.indexOf(codeFlag);
+                        code = code + line.substring(0, index) + '\n';
+
+                        // 代码区段结束，显示代码
+                        let showCodeEle = showCode(code);
+                        showContentEle.appendChild(showCodeEle);
+                        code = null;
+                    }
+                    else {
+                        code = code + line + '\n';
+                    }
+                }
+            }
+
+            showRootElement.appendChild(showContentEle);
+        }
+	</script>
+	
+</body>
+</html>

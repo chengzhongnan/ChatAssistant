@@ -18,7 +18,7 @@ namespace ChatAssistant
 
         private async void MainForm_Load(object sender, EventArgs e)
         {
-            await webView21.EnsureCoreWebView2Async();
+            await InitWebView();
 
             InitChatGPT();
             // InitPrompt();
@@ -26,6 +26,7 @@ namespace ChatAssistant
         }
 
         private IChatCompletion chatGPT = null;
+        private IChatCompletion chatCodeX = null;
         private TreeNode _CurrentNode = null;
         private TreeNode lastClickNode = null;
         private SqliteConnection _connection;
@@ -39,16 +40,27 @@ namespace ChatAssistant
             if (Global.GPTVersion == GPT_Version.GPT_AZure_3_5)
             {
                 chatGPT = new AzureChatCompletion(
-                "*******************",
-                "*******************",
-                "*******************");
+                "***************************",
+                "**************************",
+                "**************************");
             }
 
             if (Global.GPTVersion == GPT_Version.GPT_OpenAI_4)
             {
-                chatGPT = new OpenAIChatCompletion("*******************",
-                    "*******************");
+                chatGPT = new OpenAIChatCompletion("**************************",
+                    "**************************");
             }
+
+            chatCodeX = new AzureChatCompletion(
+                "**************************",
+                "**************************",
+                "**************************");
+        }
+
+        private async Task InitWebView()
+        {
+            await webView21.EnsureCoreWebView2Async();
+            webView21.CoreWebView2.NavigationCompleted += new EventHandler<Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs>(async (sender, e) => await onWebViewNavigationCompleted(sender, e));
         }
 
         private TreeNode? ClearPromptTreeNode()
@@ -56,6 +68,20 @@ namespace ChatAssistant
             if (promptTreeView.Nodes.Count > 0)
             {
                 var rootNode = promptTreeView.Nodes[0];
+                rootNode.Nodes.Clear();
+                return rootNode;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        private TreeNode? ClearCodePromptTreeNode()
+        {
+            if (promptTreeView.Nodes.Count > 1)
+            {
+                var rootNode = promptTreeView.Nodes[1];
                 rootNode.Nodes.Clear();
                 return rootNode;
             }
@@ -101,6 +127,9 @@ namespace ChatAssistant
                 
             ReloadActors(_connection);
             ReloadDialogues(_connection);
+
+            // ReloadCodeActors(_connection);
+            // ReloadCodeDialogues(_connection);
         }
 
         private void ReloadActors(SqliteConnection conn)
@@ -137,6 +166,40 @@ namespace ChatAssistant
             rootNode.Expand();
         }
 
+        private void ReloadCodeActors(SqliteConnection conn)
+        {
+            var rootNode = ClearCodePromptTreeNode();
+            if (rootNode == null)
+            {
+                return;
+            }
+
+            var groups = GetAllCodeGroups(conn);
+            var groupOrder = 1;
+            foreach (var group in groups)
+            {
+                TreeNode treeNodeGroup = new TreeNode(group.Name);
+                treeNodeGroup.Tag = group;
+                rootNode.Nodes.Add(treeNodeGroup);
+
+                var actors = GetCodeGroupActors(group.Name);
+                var actorOrder = 1;
+                foreach (var actor in actors)
+                {
+                    TreeNode treeNodeRole = new TreeNode(actor.Name);
+                    treeNodeRole.Tag = actor;
+
+                    treeNodeGroup.Nodes.Add(treeNodeRole);
+                    ResetActorShowOrderAfterLoad(actor, actorOrder);
+                    ResetActorGroupOrderAfterLoad(actor, groupOrder);
+                    actorOrder++;
+                }
+                groupOrder++;
+            }
+
+            rootNode.Expand();
+        }
+
         private void ResetActorShowOrderAfterLoad(TreeViewActorTag actor, int order)
         {
             var command = _connection.CreateCommand();
@@ -154,6 +217,36 @@ namespace ChatAssistant
         }
 
         private void ReloadDialogues(SqliteConnection conn)
+        {
+            var command = conn.CreateCommand();
+            // 取得所有对话
+            command.CommandText = @"select id, actorid, name from dialogue";
+            List<TreeViewDialogueTag> itemTagList = new List<TreeViewDialogueTag>();
+            using (var reader = command.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    var id = reader.GetInt32(0);
+                    if (reader.IsDBNull(1) || reader.IsDBNull(2)) continue;
+
+                    var actorid = reader.GetInt32(1);
+                    var name = reader.GetString(2);
+
+                    TreeViewDialogueTag itemTag = new TreeViewDialogueTag()
+                    {
+                        Id = id,
+                        Name = name,
+                        ActorId = actorid
+                    };
+
+                    itemTagList.Add(itemTag);
+                }
+            }
+
+            ReloadDialogContext(itemTagList);
+        }
+
+        private void ReloadCodeDialogues(SqliteConnection conn)
         {
             var command = conn.CreateCommand();
             // 取得所有对话
@@ -349,6 +442,28 @@ namespace ChatAssistant
             return groups;
         }
 
+        private List<TreeViewGroupTag> GetAllCodeGroups(SqliteConnection conn)
+        {
+            List<TreeViewGroupTag> groups = new List<TreeViewGroupTag>();
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT DISTINCT \"group\", grouporder FROM \"actorProgram\"";
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    var group = reader.GetString(0);
+                    if (reader.IsDBNull(1)) continue;
+
+                    var groupOrder = reader.GetInt32(1);
+
+                    TreeViewGroupTag tag = new TreeViewGroupTag() { Name = group, ShowOrder = groupOrder };
+                    groups.Add(tag);
+                }
+            }
+            groups.Sort((a, b) => a.ShowOrder.CompareTo(b.ShowOrder));
+            return groups;
+        }
+
         private List<TreeViewActorTag> GetGroupActors(string groupName)
         {
             List<TreeViewActorTag> results = new List<TreeViewActorTag>();
@@ -379,6 +494,50 @@ namespace ChatAssistant
                         tag.Prompt = reader.GetString(3);
                     }
                     
+                    if (!reader.IsDBNull(4))
+                    {
+                        tag.RecoverContext = reader.GetBoolean(4);
+                    }
+
+                    results.Add(tag);
+                }
+            }
+
+            results.Sort((a, b) => a.ShowOrder.CompareTo(b.ShowOrder));
+
+            return results;
+        }
+
+        private List<TreeViewActorTag> GetCodeGroupActors(string groupName)
+        {
+            List<TreeViewActorTag> results = new List<TreeViewActorTag>();
+            var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT id, actor, actororder, prompt, recovercontext FROM \"actorProgram\" where \"group\"=@group";
+            cmd.Parameters.AddWithValue("@group", groupName);
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    TreeViewActorTag tag = new TreeViewActorTag();
+                    tag.Id = reader.GetInt32(0);
+                    if (reader.IsDBNull(1))
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        tag.Name = reader.GetString(1);
+                    }
+                    if (!reader.IsDBNull(2))
+                    {
+                        tag.ShowOrder = reader.GetInt32(2);
+                    }
+
+                    if (!reader.IsDBNull(3))
+                    {
+                        tag.Prompt = reader.GetString(3);
+                    }
+
                     if (!reader.IsDBNull(4))
                     {
                         tag.RecoverContext = reader.GetBoolean(4);
@@ -625,12 +784,12 @@ namespace ChatAssistant
             rootNode.Expand();
         }
 
-        private void promptTreeView_AfterSelect(object sender, TreeViewEventArgs e)
+        private async void promptTreeView_AfterSelect(object sender, TreeViewEventArgs e)
         {
-            ShowTreeNode(e.Node);
+            await ShowTreeNode(e.Node);
         }
 
-        private void ShowTreeNode(TreeNode node)
+        private async Task ShowTreeNode(TreeNode node)
         {
             var selectNode = node;
             if (selectNode == null || selectNode.Tag == null)
@@ -650,7 +809,7 @@ namespace ChatAssistant
                 TreeViewActorTag actorTag = selectNode.Parent.Tag as TreeViewActorTag;
                 TreeViewDialogueTag itemTag = selectNode.Tag as TreeViewDialogueTag;
                 _CurrentNode = selectNode;
-                ShowTreeViewTag(itemTag, actorTag);
+                await ShowTreeViewTag(itemTag, actorTag);
             }
             else if (selectNode.Tag is TreeViewGroupTag)
             {
@@ -680,15 +839,18 @@ namespace ChatAssistant
         /// 在右边的TextBox中显示Tag的内容
         /// </summary>
         /// <param name="tag"></param>
-        private void ShowTreeViewTag(TreeViewDialogueTag tag, TreeViewActorTag actor)
+        private async Task ShowTreeViewTag(TreeViewDialogueTag tag, TreeViewActorTag actor)
         {
-            StringBuilder sb = new StringBuilder();
-            // 标题
-            sb.Append("<html>");
-            sb.Append("<body>");
-            // sb.AppendLine($"<p>[{tag.Prompt}]<p>");
-            sb.AppendLine($"<p>您好，我是一个\"{actor.Name}\", 请问您有什么想问我的吗？</p>");
-            sb.AppendLine("<br/>");
+            //StringBuilder sb = new StringBuilder();
+            //// 标题
+            //sb.Append("<html>");
+            //sb.Append("<body>");
+            //// sb.AppendLine($"<p>[{tag.Prompt}]<p>");
+            //sb.AppendLine($"<p>您好，我是一个\"{actor.Name}\", 请问您有什么想问我的吗？</p>");
+            //sb.AppendLine("<br/>");
+            var header = $"您好，我是一个\"{actor.Name}\", 请问您有什么想问我的吗？";
+
+            List<string> showContents = new List<string>();
 
             // 将历史中的Message加入
             foreach (var message in tag.Chat_History)
@@ -700,30 +862,63 @@ namespace ChatAssistant
 
                 if (message.Role == AuthorRole.User)
                 {
-                    sb.Append("<p>Q : ");
-                    sb.AppendLine($"{message.Content}</p>");
+                    // sb.Append("<p>Q : ");
+                    // sb.AppendLine($"{message.Content}</p>");
                     // sb.AppendLine("<br/>");
+                    showContents.Add($"Q : {message.Content}");
                 }
 
                 if (message.Role == AuthorRole.Assistant)
                 {
-                    sb.Append("<p>A : ");
-                    sb.AppendLine($"{message.Content}</p>");
+                    // sb.Append("<p>A : ");
+                    // sb.AppendLine($"{message.Content}</p>");
                     // sb.AppendLine("<br/>");
+                    showContents.Add($"A : {message.Content}");
                 }
             }
 
-            sb.AppendLine("</body></html>");
+            webView21.CoreWebView2.Navigate($"file:///{Environment.CurrentDirectory}/ShowCode.html");
 
-            webView21.NavigateToString(sb.ToString());
+            _ExecuteContentScript = $"showContentArray(`{header}`, {Newtonsoft.Json.JsonConvert.SerializeObject(showContents)})";
+        }
 
-            // webView21.ExecuteScriptAsync()
+        private string _ExecuteContentScript = string.Empty;
 
-            //tb_ShowMessage.Text = sb.ToString();
+        private async Task onWebViewNavigationCompleted(object objSender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs e)
+        {
+            if (!string.IsNullOrEmpty(_ExecuteContentScript))
+            {
+                await webView21.ExecuteScriptAsync(_ExecuteContentScript);
+                _ExecuteContentScript = string.Empty;
+            }
+        }
 
-            //tb_ShowMessage.SelectionStart = tb_ShowMessage.Text.Length;
-            //tb_ShowMessage.SelectionLength = 0;
-            //tb_ShowMessage.ScrollToCaret();
+        private IChatCompletion GetCurrentChatEngine()
+        {
+            if (_CurrentNode == null || _CurrentNode.Parent == null)
+            {
+                return null;
+            }
+
+            if (promptTreeView.Nodes.Count <= 1)
+            {
+                return chatGPT;
+            }
+
+            TreeNode nodeParent = _CurrentNode.Parent;
+            while(nodeParent.Parent != null)
+            {
+                nodeParent = nodeParent.Parent;
+            }
+
+            if (nodeParent.Name == promptTreeView.Nodes[1].Name)
+            {
+                return chatCodeX;
+            }
+            else
+            {
+                return chatGPT;
+            }
         }
 
         private async Task ChatMessage(TreeViewDialogueTag tag, TreeViewActorTag actor, string chatMessage = null)
@@ -743,17 +938,19 @@ namespace ChatAssistant
             if (chatMessage != "continue" && chatMessage != "继续")
             {
                 InsertChatMessage(tag.Id, AuthorRole.User.Label, chatMessage);
-                ShowTreeViewTag(tag, actor);
+                await ShowTreeViewTag(tag, actor);
             }
 
             var reply = string.Empty;
+            var chatEngine = GetCurrentChatEngine();
 
             if (actor.RecoverContext)
             {
                 tb_UserMessage.Text = String.Empty;
                 ChatRequestSettings chatRequestSettings = new ChatRequestSettings();
                 chatRequestSettings.MaxTokens = 2048;
-                reply = await chatGPT.GenerateMessageAsync(tag.Chat_History, chatRequestSettings);
+                
+                reply = await chatEngine.GenerateMessageAsync(tag.Chat_History, chatRequestSettings);
             }
             else
             {
@@ -765,7 +962,7 @@ namespace ChatAssistant
                 newChat.AddSystemMessage(actor.Prompt);
                 newChat.AddUserMessage(chatMessage);
 
-                reply = await chatGPT.GenerateMessageAsync(newChat, chatRequestSettings);
+                reply = await chatEngine.GenerateMessageAsync(newChat, chatRequestSettings);
             }
 
             if (chatMessage == "continue" || chatMessage == "继续")
@@ -789,13 +986,13 @@ namespace ChatAssistant
                     InsertChatMessage(tag.Id, AuthorRole.Assistant.Label, reply);
                 }
 
-                ShowTreeViewTag(tag, actor);
+                await ShowTreeViewTag(tag, actor);
             }
             else
             {
                 tag.Chat_History.AddAssistantMessage(reply);
 
-                ShowTreeViewTag(tag, actor);
+                await ShowTreeViewTag(tag, actor);
                 // 保存对话
                 InsertChatMessage(tag.Id, AuthorRole.Assistant.Label, reply);
             }
@@ -1012,7 +1209,7 @@ namespace ChatAssistant
 
         }
 
-        private void promptTreeView_MouseUp(object sender, MouseEventArgs e)
+        private async void promptTreeView_MouseUp(object sender, MouseEventArgs e)
         {
             // 如果是有效的鼠标右键点击，在这里设置右键点击节点为选中状态
             if (lastClickNode != null)
@@ -1021,7 +1218,7 @@ namespace ChatAssistant
                 lastClickNode.Checked = true;
                 _CurrentNode = lastClickNode;
 
-                ShowTreeNode(_CurrentNode);
+                // await ShowTreeNode(_CurrentNode);
             }
         }
 
