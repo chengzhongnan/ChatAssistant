@@ -41,6 +41,17 @@
             padding: 1em;
         }
     </style>
+    <link rel="stylesheet" href="./highlight.js.min.css">
+    <script src="./highlight.min.js"></script>
+    <script src="./node_modules/markdown-it/dist/markdown-it.min.js"></script>
+    <script src="./node_modules/markdown-it-sub/dist/markdown-it-sub.min.js"></script>
+    <script src="./node_modules/markdown-it-sup/dist/markdown-it-sup.min.js"></script>
+    <script src="./node_modules/markdown-it-footnote/dist/markdown-it-footnote.min.js"></script>
+    <script src="./node_modules/markdown-it-deflist/dist/markdown-it-deflist.min.js"></script>
+    <script src="./node_modules/markdown-it-mark/dist/markdown-it-mark.min.js"></script>
+    <script src="./node_modules/markdown-it-task-lists/dist/markdown-it-task-lists.min.js"></script>
+    <script src="./node_modules/markdown-it-anchor/dist/markdownItAnchor.umd.js"></script>
+    <script src="./node_modules/markdown-it-toc-done-right/dist/markdownItTocDoneRight.umd.js"></script>
 </head>
 <body>
     <div id="content" class="box"></div>
@@ -63,16 +74,66 @@
         }
 
         function showContentArray(header, arrayContent) {
-            showContent(header);
+            showContent_v2(header);
 
             for (let showString of arrayContent) {
-                showContent(showString);
+                showContent_v2(showString);
             }
 
             window.scrollTo(0, document.body.scrollHeight);
         }
 
-        function showContent(showString) {
+        function showContent_v2(showString) {
+            let showRootElement = document.getElementById('content');
+
+            let showContentEle = document.createElement('div');
+            showContentEle.className = 'box';
+            var md = window.markdownit({
+                html: true, //可以识别html
+                linkify: true,//自动检测像链接的文本
+                breaks: true,//回车换行
+                typographer: true,//优化排版，标点
+                //代码高亮
+                highlight: function (str, lang) {
+                    if (lang && hljs.getLanguage(lang)) {
+                        try {
+                            return '<pre class="hljs"><code>' +
+                                hljs.highlight(lang, str, true).value +
+                                '</code></pre>';
+                        } catch (__) {}
+                    }
+                    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
+                }
+            })
+            .use(window.markdownitSub)
+            .use(window.markdownitSup)
+            .use(window.markdownitFootnote)
+            .use(window.markdownitDeflist)
+            .use(window.markdownitTaskLists)
+            .use(window.markdownitMark)
+            .use(window.markdownItAnchor, {
+                permalink: false,
+                permalinkBefore: false,
+                permalinkSymbol: '#'
+            })
+            // .use(window.markdownItTocDoneRight, {
+            //     containerClass: 'toc',
+            //     containerId: 'toc',
+            //     listType: 'ul',
+            //     listClass: 'listClass',
+            //     itemClass: 'itemClass',
+            //     linkClass: 'linkClass',
+            //     callback: function (html, ast) {
+            //         //把目录单独列出来
+            //         left.innerHTML = html;
+            //     }
+            // });
+            showContentEle.innerHTML = md.render(showString);
+
+            showRootElement.appendChild(showContentEle);
+        }
+
+        function showContent_v1(showString) {
             let showRootElement = document.getElementById('content');
 
             let showContentEle = document.createElement('div');

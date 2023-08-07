@@ -33,7 +33,7 @@
 
   <ItemGroup>
     <None Update="ShowCode.html">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 

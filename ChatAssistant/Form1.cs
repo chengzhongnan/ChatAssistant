@@ -40,21 +40,21 @@ namespace ChatAssistant
             if (Global.GPTVersion == GPT_Version.GPT_AZure_3_5)
             {
                 chatGPT = new AzureChatCompletion(
-                "***************************",
-                "**************************",
-                "**************************");
+                "GPT3516K",
+                "https://chengopenai.openai.azure.com/",
+                "a39a31c7864b4f4d816d0624c9a54ecd");
             }
 
             if (Global.GPTVersion == GPT_Version.GPT_OpenAI_4)
             {
-                chatGPT = new OpenAIChatCompletion("**************************",
-                    "**************************");
+                chatGPT = new OpenAIChatCompletion("gpt-4-0613",
+                    "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");
             }
 
             chatCodeX = new AzureChatCompletion(
-                "**************************",
-                "**************************",
-                "**************************");
+                "CodeX",
+                "https://chengopenai.openai.azure.com/",
+                "a39a31c7864b4f4d816d0624c9a54ecd");
         }
 
         private async Task InitWebView()
@@ -873,11 +873,11 @@ namespace ChatAssistant
                     // sb.Append("<p>A : ");
                     // sb.AppendLine($"{message.Content}</p>");
                     // sb.AppendLine("<br/>");
-                    showContents.Add($"A : {message.Content}");
+                    showContents.Add($"{message.Content}");
                 }
             }
 
-            webView21.CoreWebView2.Navigate($"file:///{Environment.CurrentDirectory}/ShowCode.html");
+            webView21.CoreWebView2.Navigate($"file:///{Environment.CurrentDirectory}/html/ShowCode.html");
 
             _ExecuteContentScript = $"showContentArray(`{header}`, {Newtonsoft.Json.JsonConvert.SerializeObject(showContents)})";
         }
@@ -948,7 +948,7 @@ namespace ChatAssistant
             {
                 tb_UserMessage.Text = String.Empty;
                 ChatRequestSettings chatRequestSettings = new ChatRequestSettings();
-                chatRequestSettings.MaxTokens = 2048;
+                chatRequestSettings.MaxTokens = 8 * 1024;
                 
                 reply = await chatEngine.GenerateMessageAsync(tag.Chat_History, chatRequestSettings);
             }
@@ -956,7 +956,7 @@ namespace ChatAssistant
             {
                 tb_UserMessage.Text = String.Empty;
                 ChatRequestSettings chatRequestSettings = new ChatRequestSettings();
-                chatRequestSettings.MaxTokens = 2048;
+                chatRequestSettings.MaxTokens = 8 * 1024;
 
                 ChatHistory newChat = new ChatHistory();
                 newChat.AddSystemMessage(actor.Prompt);
@@ -1120,6 +1120,7 @@ namespace ChatAssistant
             if (e.KeyCode == Keys.Enter)
             {
                 await SendChat();
+                e.Handled = true;
             }
         }
 
