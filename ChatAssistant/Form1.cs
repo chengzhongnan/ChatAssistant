@@ -40,21 +40,21 @@ namespace ChatAssistant
             if (Global.GPTVersion == GPT_Version.GPT_AZure_3_5)
             {
                 chatGPT = new AzureChatCompletion(
-                "GPT3516K",
-                "https://chengopenai.openai.azure.com/",
-                "a39a31c7864b4f4d816d0624c9a54ecd");
+                "*****************************",
+                "*******************************",
+                "*******************************");
             }
 
             if (Global.GPTVersion == GPT_Version.GPT_OpenAI_4)
             {
-                chatGPT = new OpenAIChatCompletion("gpt-4-0613",
-                    "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");
+                chatGPT = new OpenAIChatCompletion("*************************",
+                    "***********************************");
             }
 
             chatCodeX = new AzureChatCompletion(
-                "CodeX",
-                "https://chengopenai.openai.azure.com/",
-                "a39a31c7864b4f4d816d0624c9a54ecd");
+                "***************************",
+                "*****************************",
+                "***************************");
         }
 
         private async Task InitWebView()
