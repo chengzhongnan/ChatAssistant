@@ -275,6 +275,9 @@
             this.tb_UserMessage.Size = new System.Drawing.Size(478, 55);
             this.tb_UserMessage.TabIndex = 0;
             this.tb_UserMessage.KeyDown += new System.Windows.Forms.KeyEventHandler(this.tb_UserMessage_KeyDown);
+            this.tb_UserMessage.AllowDrop = true;
+            this.tb_UserMessage.DragEnter += new DragEventHandler(Tb_UserMessage_DragEnter);
+            this.tb_UserMessage.DragDrop += new DragEventHandler(Tb_UserMessage_DragDrop);
             // 
             // splitContainer5
             // 

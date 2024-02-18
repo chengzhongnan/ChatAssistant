@@ -19,16 +19,7 @@ namespace ChatAssistant
 
         private void ConfigForm_Load(object sender, EventArgs e)
         {
-            if (Global.GPTVersion == GPT_Version.GPT_AZure_3_5)
-            {
-                radioButton1.Checked = true;
-                radioButton2.Checked = false;
-            }
-            else if (Global.GPTVersion == GPT_Version.GPT_OpenAI_4)
-            {
-                radioButton1.Checked = false;
-                radioButton2.Checked = true;
-            }
+            Init();
         }
 
         public GPT_Version GetGPT_Version()
@@ -63,6 +54,82 @@ namespace ChatAssistant
 
                 Global.GPTVersion = GPT_Version.GPT_OpenAI_4;
             }
+        }
+
+        public class GPTSetting
+        {
+            public string Model { get; set; }
+            public string Key { get; set; }
+        }
+
+        public class ProxySetting
+        {
+            public bool UseProxy { get; set; }
+            public string ProxyType { get; set; }
+            public string ProxyIp { get; set; }
+            public int ProxyPort { get; set; }
+        }
+
+        public void Init()
+        {
+            if (!string.IsNullOrEmpty(Setting.Instance.GPT.Model))
+            {
+                cbOpenAIModel.SelectedItem = Setting.Instance.GPT.Model;
+            }
+
+            tbOpenAIKey.Text = Setting.Instance.GPT.Key;
+
+            SetProxyControlState(Setting.Instance.Proxy.UseProxy);
+
+            if (Setting.Instance.Proxy.UseProxy)
+            {
+                cbProxyType.SelectedItem = Setting.Instance.Proxy.ProxyType;
+                tbProxyIP.Text = Setting.Instance.Proxy.ProxyIp;
+                tbProxyPort.Text = Setting.Instance.Proxy.ProxyPort.ToString();
+            }
+        }
+
+        private void SetProxyControlState(bool useProxy)
+        {
+            if (useProxy)
+            {
+                cbUseProxy.Checked = true;
+                cbProxyType.Enabled = true;
+                tbProxyIP.Enabled = true;
+                tbProxyPort.Enabled = true;
+            }
+            else
+            {
+                cbUseProxy.Checked = false;
+                cbProxyType.Enabled = false;
+                tbProxyIP.Enabled = false;
+                tbProxyPort.Enabled = false;
+            }
+        }
+
+        public GPTSetting GetGPTSetting()
+        {
+            GPTSetting setting = new GPTSetting();
+            setting.Model = cbOpenAIModel.Text;
+            setting.Key = tbOpenAIKey.Text;
+
+            return setting;
+        }
+
+        public ProxySetting GetProxySetting()
+        {
+            ProxySetting setting = new ProxySetting();
+            setting.UseProxy = cbUseProxy.Checked;
+            setting.ProxyIp = tbProxyIP.Text;
+            setting.ProxyPort = int.Parse(tbProxyPort.Text);
+            setting.ProxyType = cbProxyType.Text;
+
+            return setting;
+        }
+
+        private void tbProxyPort_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            e.Handled = !char.IsDigit(e.KeyChar) && !char.IsControl(e.KeyChar);
         }
     }
 }

@@ -15,6 +15,6 @@ namespace ChatAssistant
 
     internal class Global
     {
-        public static GPT_Version GPTVersion { get; set; } = GPT_Version.GPT_AZure_3_5;
+        public static GPT_Version GPTVersion { get; set; } = GPT_Version.GPT_OpenAI_4;
     }
 }

@@ -6,6 +6,8 @@ using System.Xml.Linq;
 using System.Linq;
 using Microsoft.Data.Sqlite;
 using SQLitePCL;
+using System.Windows.Markup;
+using System.Net;
 
 namespace ChatAssistant
 {
@@ -20,13 +22,13 @@ namespace ChatAssistant
         {
             await InitWebView();
 
-            InitChatGPT();
-            // InitPrompt();
             InitSqliteDB();
+
+            InitChatGPT();
         }
 
         private IChatCompletion chatGPT = null;
-        private IChatCompletion chatCodeX = null;
+        // private IChatCompletion chatCodeX = null;
         private TreeNode _CurrentNode = null;
         private TreeNode lastClickNode = null;
         private SqliteConnection _connection;
@@ -39,22 +41,84 @@ namespace ChatAssistant
         {
             if (Global.GPTVersion == GPT_Version.GPT_AZure_3_5)
             {
-                chatGPT = new AzureChatCompletion(
-                "*****************************",
-                "*******************************",
-                "*******************************");
+                //chatGPT = new AzureChatCompletion(
+                //"GPT3516K",
+                //"",
+                //"");
+            }
+
+            // Check Setting
+            if (!CheckSetting())
+            {
+                MessageBox.Show("请先填写OpenAI 的API Key参数，再使用本软件。", "提示");
+                this.Close();
+                return;
             }
 
             if (Global.GPTVersion == GPT_Version.GPT_OpenAI_4)
             {
-                chatGPT = new OpenAIChatCompletion("*************************",
-                    "***********************************");
+                HttpClientHandler httpClientHandler = null;
+                if (Setting.Instance.Proxy.UseProxy)
+                {
+                    var proxy = Setting.Instance.Proxy;
+                    var webProxy = new System.Net.WebProxy()
+                    {
+                        Address = new Uri($"{proxy.ProxyType}://{proxy.ProxyIp}:{proxy.ProxyPort}")
+                    };
+                    httpClientHandler = new HttpClientHandler
+                    {
+                        Proxy = webProxy
+                    };
+                }
+                else
+                {
+                    httpClientHandler = new HttpClientHandler();
+                }
+                
+                HttpClient httpClient = new HttpClient(httpClientHandler);
+
+                chatGPT = new OpenAIChatCompletion(Setting.Instance.GPT.Model,
+                    Setting.Instance.GPT.Key,
+                    httpClient: httpClient);
+            }
+        }
+
+        private void SaveSetting(ConfigForm configForm)
+        {
+            var gpt = Setting.Instance.GPT;
+            var proxy = Setting.Instance.Proxy;
+
+            var formGPT = configForm.GetGPTSetting();
+            gpt.Model = formGPT.Model;
+            gpt.Key = formGPT.Key;
+
+            var formProxy = configForm.GetProxySetting();
+            proxy.UseProxy = formProxy.UseProxy;
+            proxy.ProxyIp = formProxy.ProxyIp;
+            proxy.ProxyType = formProxy.ProxyType;
+            proxy.ProxyPort = formProxy.ProxyPort;
+
+            Setting.Instance.Save();
+        }
+
+        private bool CheckSetting()
+        {
+            var gpt = Setting.Instance.GPT;
+            var proxy = Setting.Instance.Proxy;
+            if (string.IsNullOrEmpty(gpt.Model) || string.IsNullOrEmpty(gpt.Key))
+            {
+                ConfigForm configForm = new ConfigForm();
+                if (configForm.ShowDialog() == DialogResult.OK)
+                {
+                    SaveSetting(configForm);
+                }
+                else
+                {
+                    return false;
+                }
             }
 
-            chatCodeX = new AzureChatCompletion(
-                "***************************",
-                "*****************************",
-                "***************************");
+            return !(string.IsNullOrEmpty(gpt.Model) || string.IsNullOrEmpty(gpt.Key));
         }
 
         private async Task InitWebView()
@@ -124,7 +188,7 @@ namespace ChatAssistant
         {
             _connection = new SqliteConnection($"Data Source={_DialoguaFile}");
             _connection.Open();
-                
+
             ReloadActors(_connection);
             ReloadDialogues(_connection);
 
@@ -142,7 +206,7 @@ namespace ChatAssistant
 
             var groups = GetAllGroups(conn);
             var groupOrder = 1;
-            foreach(var group in groups)
+            foreach (var group in groups)
             {
                 TreeNode treeNodeGroup = new TreeNode(group.Name);
                 treeNodeGroup.Tag = group;
@@ -150,7 +214,7 @@ namespace ChatAssistant
 
                 var actors = GetGroupActors(group.Name);
                 var actorOrder = 1;
-                foreach(var actor in actors)
+                foreach (var actor in actors)
                 {
                     TreeNode treeNodeRole = new TreeNode(actor.Name);
                     treeNodeRole.Tag = actor;
@@ -279,18 +343,18 @@ namespace ChatAssistant
         private void ReloadDialogContext(List<TreeViewDialogueTag> itemTagList)
         {
             var rootNode = promptTreeView.Nodes[0];
-            foreach(TreeNode groupNode in rootNode.Nodes)
+            foreach (TreeNode groupNode in rootNode.Nodes)
             {
                 TreeViewGroupTag treeViewGroupTag = groupNode.Tag as TreeViewGroupTag;
                 if (treeViewGroupTag == null) continue;
 
-                foreach(TreeNode actorNode in groupNode.Nodes)
+                foreach (TreeNode actorNode in groupNode.Nodes)
                 {
                     TreeViewActorTag actorTag = actorNode.Tag as TreeViewActorTag;
                     if (actorTag == null) continue;
 
                     var dialogList = itemTagList.Where(a => a.ActorId == actorTag.Id).ToList();
-                    foreach(var dialog in dialogList)
+                    foreach (var dialog in dialogList)
                     {
                         var chatHistory = LoadDialogMessage(dialog.Id);
                         RebuildDialogueNode(chatHistory, dialog, actorNode);
@@ -304,7 +368,7 @@ namespace ChatAssistant
             var cmd = _connection.CreateCommand();
             cmd.CommandText = $"select id, role, message from chatmessage where dialogueid={dialogueId}";
 
-            using(var reader = cmd.ExecuteReader())
+            using (var reader = cmd.ExecuteReader())
             {
                 ChatHistory chatHistory = new ChatHistory();
                 while (reader.Read())
@@ -404,7 +468,7 @@ namespace ChatAssistant
                     }
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Console.WriteLine(ex);
             }
@@ -493,7 +557,7 @@ namespace ChatAssistant
                     {
                         tag.Prompt = reader.GetString(3);
                     }
-                    
+
                     if (!reader.IsDBNull(4))
                     {
                         tag.RecoverContext = reader.GetBoolean(4);
@@ -557,9 +621,9 @@ namespace ChatAssistant
             cmd.CommandText = @"select group, actor, dialogue, prompt from dialogueTree where id = $id";
             cmd.Parameters.AddWithValue("$id", treeid);
 
-            using(var reader = cmd.ExecuteReader())
+            using (var reader = cmd.ExecuteReader())
             {
-                while( reader.Read())
+                while (reader.Read())
                 {
                     var group = reader.GetString(0);
                     var actor = reader.GetString(1);
@@ -578,9 +642,9 @@ namespace ChatAssistant
             cmd.Parameters.AddWithValue("@actorid", actorid);
             cmd.Parameters.AddWithValue("@name", name);
 
-            using(var reader = cmd.ExecuteReader())
+            using (var reader = cmd.ExecuteReader())
             {
-                while(reader.Read())
+                while (reader.Read())
                 {
                     var id = reader.GetInt32(0);
                     return id;
@@ -658,9 +722,9 @@ namespace ChatAssistant
 
             cmd.CommandText = "SELECT id FROM actor where \"group\"=@group";
             cmd.Parameters.AddWithValue("@group", groupName);
-            using(var reader = cmd.ExecuteReader())
+            using (var reader = cmd.ExecuteReader())
             {
-                while(reader.Read())
+                while (reader.Read())
                 {
                     return false;
                 }
@@ -757,7 +821,7 @@ namespace ChatAssistant
             try
             {
                 XElement xRoot = XElement.Load(_CategoryFile);
-                foreach(var xEle in xRoot.Elements())
+                foreach (var xEle in xRoot.Elements())
                 {
                     // 分类
                     var categoryName = xEle.Attribute("name").Value;
@@ -766,7 +830,7 @@ namespace ChatAssistant
                     treeNodeGroup.Tag = groupTag;
                     rootNode.Nodes.Add(treeNodeGroup);
 
-                    foreach(var xRole in xEle.Elements())
+                    foreach (var xRole in xEle.Elements())
                     {
                         // 角色
                         var roleName = xRole.Attribute("name").Value;
@@ -906,19 +970,12 @@ namespace ChatAssistant
             }
 
             TreeNode nodeParent = _CurrentNode.Parent;
-            while(nodeParent.Parent != null)
+            while (nodeParent.Parent != null)
             {
                 nodeParent = nodeParent.Parent;
             }
 
-            if (nodeParent.Name == promptTreeView.Nodes[1].Name)
-            {
-                return chatCodeX;
-            }
-            else
-            {
-                return chatGPT;
-            }
+            return chatGPT;
         }
 
         private async Task ChatMessage(TreeViewDialogueTag tag, TreeViewActorTag actor, string chatMessage = null)
@@ -948,21 +1005,27 @@ namespace ChatAssistant
             {
                 tb_UserMessage.Text = String.Empty;
                 ChatRequestSettings chatRequestSettings = new ChatRequestSettings();
-                chatRequestSettings.MaxTokens = 8 * 1024;
-                
+                chatRequestSettings.MaxTokens = 4 * 1024;
+
                 reply = await chatEngine.GenerateMessageAsync(tag.Chat_History, chatRequestSettings);
             }
             else
             {
                 tb_UserMessage.Text = String.Empty;
                 ChatRequestSettings chatRequestSettings = new ChatRequestSettings();
-                chatRequestSettings.MaxTokens = 8 * 1024;
+                chatRequestSettings.MaxTokens = 4 * 1024;
 
                 ChatHistory newChat = new ChatHistory();
                 newChat.AddSystemMessage(actor.Prompt);
                 newChat.AddUserMessage(chatMessage);
 
                 reply = await chatEngine.GenerateMessageAsync(newChat, chatRequestSettings);
+            }
+
+            if (reply == null)
+            {
+                MessageBox.Show("获取回复失败！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
             }
 
             if (chatMessage == "continue" || chatMessage == "继续")
@@ -1121,6 +1184,7 @@ namespace ChatAssistant
             {
                 await SendChat();
                 e.Handled = true;
+                tb_UserMessage.Text = "";
             }
         }
 
@@ -1267,7 +1331,7 @@ namespace ChatAssistant
             }
 
             var index = 1;
-            foreach(TreeNode actorNode in node.Nodes)
+            foreach (TreeNode actorNode in node.Nodes)
             {
                 TreeViewActorTag tag = actorNode.Tag as TreeViewActorTag;
                 if (tag == null) continue;
@@ -1393,7 +1457,7 @@ namespace ChatAssistant
             // 移动节点
             var pt = ((TreeView)(sender)).PointToClient(new Point(e.X, e.Y));
             var targetNode = promptTreeView.GetNodeAt(pt);
-            
+
             if (targetNode == null)
             {
                 return;
@@ -1514,7 +1578,7 @@ namespace ChatAssistant
                 return null;
             }
 
-            foreach(TreeNode child in node.Nodes)
+            foreach (TreeNode child in node.Nodes)
             {
                 if (child.Text == name)
                 {
@@ -1541,7 +1605,7 @@ namespace ChatAssistant
 
             // 查询有没有将父节点移动到子节点的情况
             var parentNode = dropNode.Parent;
-            while(parentNode != null)
+            while (parentNode != null)
             {
                 if (parentNode == dragNode)
                 {
@@ -1656,17 +1720,6 @@ namespace ChatAssistant
                     }
                 }
             }
-            
-        }
-
-        /// <summary>
-        /// 保存对话上下文
-        /// </summary>
-        /// <param name="groupTag"></param>
-        /// <param name="actorTag"></param>
-        /// <param name="actorNode"></param>
-        private void SaveDialogueContext(TreeViewGroupTag groupTag, TreeViewActorTag actorTag, TreeNode actorNode)
-        {
 
         }
 
@@ -1681,7 +1734,7 @@ namespace ChatAssistant
             }
 
             XElement xRoot = new XElement("categories");
-            foreach(TreeNode node in promptTreeView.Nodes[0].Nodes)
+            foreach (TreeNode node in promptTreeView.Nodes[0].Nodes)
             {
                 if (node.Tag == null) continue;
 
@@ -1690,9 +1743,9 @@ namespace ChatAssistant
                 if (tag == null) continue;
 
                 var xGroup = new XElement("category", new XAttribute("name", tag.Name));
-                
-                
-                foreach(TreeNode child in node.Nodes)
+
+
+                foreach (TreeNode child in node.Nodes)
                 {
                     // 第二个层级，是角色
                     if (child.Tag == null) continue;
@@ -1702,7 +1755,7 @@ namespace ChatAssistant
 
                     var xActor = new XElement("role", new XAttribute("name", tagActor.Name));
                     xActor.Value = tagActor.Prompt;
-                    
+
                     xGroup.Add(xActor);
                 }
                 xRoot.Add(xGroup);
@@ -1822,7 +1875,7 @@ namespace ChatAssistant
                 return;
             }
 
-            if (MessageBox.Show("是否确定删除当前分组？删除分组以后将删除分组下所有角色","提示", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            if (MessageBox.Show("是否确定删除当前分组？删除分组以后将删除分组下所有角色", "提示", MessageBoxButtons.YesNo) == DialogResult.Yes)
             {
                 // 从数据库中删除分组
                 TreeViewGroupTag tag = _CurrentNode.Tag as TreeViewGroupTag;
@@ -1866,9 +1919,11 @@ namespace ChatAssistant
         private void 选项ToolStripMenuItem_Click(object sender, EventArgs e)
         {
             ConfigForm configForm = new ConfigForm();
-            configForm.ShowDialog();
-
-            InitChatGPT();
+            if (configForm.ShowDialog() == DialogResult.OK)
+            {
+                SaveSetting(configForm);
+                InitChatGPT();
+            }
         }
 
         private void MainForm_FormClosed(object sender, FormClosedEventArgs e)
@@ -1925,6 +1980,44 @@ namespace ChatAssistant
             }
 
             await ChatMessage(itemTag, actorTag, "continue");
+        }
+
+        private void Tb_UserMessage_DragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.OemText)
+                || e.Data.GetDataPresent(DataFormats.StringFormat)
+                || e.Data.GetDataPresent(DataFormats.UnicodeText))
+            {
+                e.Effect = DragDropEffects.Copy;
+            }
+            else
+            {
+                e.Effect = DragDropEffects.None;
+            }
+        }
+
+        private void Tb_UserMessage_DragDrop(object sender, DragEventArgs e)
+        {
+            var textString = e.Data.GetData(DataFormats.StringFormat);
+            if (textString != null)
+            {
+                tb_UserMessage.Text = textString.ToString();
+                return;
+            }
+
+            var oemData = e.Data.GetData(DataFormats.OemText);
+            if (oemData != null )
+            {
+                tb_UserMessage.Text = oemData.ToString();
+                return;
+            }
+
+            var unicodeText = e.Data.GetData(DataFormats.UnicodeText);
+            if (unicodeText != null )
+            {
+                tb_UserMessage.Text = unicodeText.ToString();
+                return;
+            }
         }
     }
 }
