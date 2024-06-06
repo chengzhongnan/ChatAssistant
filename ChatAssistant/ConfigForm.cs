@@ -32,6 +32,10 @@ namespace ChatAssistant
             {
                 return GPT_Version.GPT_OpenAI_4;
             }
+            else if (radioButton3.Checked)
+            {
+                return GPT_Version.GPT_OLLAMA;
+            }
 
             return GPT_Version.None;
         }
@@ -41,6 +45,7 @@ namespace ChatAssistant
             if (radioButton1.Checked)
             {
                 radioButton2.Checked = false;
+                radioButton3.Checked = false;
 
                 Global.GPTVersion = GPT_Version.GPT_AZure_3_5;
             }
@@ -51,8 +56,20 @@ namespace ChatAssistant
             if (radioButton2.Checked)
             {
                 radioButton1.Checked = false;
+                radioButton3.Checked = false;
 
                 Global.GPTVersion = GPT_Version.GPT_OpenAI_4;
+            }
+        }
+
+        private void radioButton3_CheckedChanged(object sender, EventArgs e)
+        {
+            if (radioButton3.Checked)
+            {
+                radioButton1.Checked = false;
+                radioButton2.Checked = false;
+
+                Global.GPTVersion = GPT_Version.GPT_OLLAMA;
             }
         }
 
@@ -120,9 +137,12 @@ namespace ChatAssistant
         {
             ProxySetting setting = new ProxySetting();
             setting.UseProxy = cbUseProxy.Checked;
-            setting.ProxyIp = tbProxyIP.Text;
-            setting.ProxyPort = int.Parse(tbProxyPort.Text);
-            setting.ProxyType = cbProxyType.Text;
+            if (Setting.Instance.Proxy.UseProxy)
+            {
+                setting.ProxyIp = tbProxyIP.Text;
+                setting.ProxyPort = int.Parse(tbProxyPort.Text);
+                setting.ProxyType = cbProxyType.Text;
+            }
 
             return setting;
         }
@@ -130,6 +150,14 @@ namespace ChatAssistant
         private void tbProxyPort_KeyPress(object sender, KeyPressEventArgs e)
         {
             e.Handled = !char.IsDigit(e.KeyChar) && !char.IsControl(e.KeyChar);
+        }
+
+        public string OLLamaUrl
+        {
+            get
+            {
+                return tb_LLAMA_URL.Text;
+            }
         }
     }
 }

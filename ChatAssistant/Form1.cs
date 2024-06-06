@@ -8,6 +8,7 @@ using Microsoft.Data.Sqlite;
 using SQLitePCL;
 using System.Windows.Markup;
 using System.Net;
+using System.Data.SQLite;
 
 namespace ChatAssistant
 {
@@ -39,19 +40,17 @@ namespace ChatAssistant
 
         private void InitChatGPT()
         {
-            if (Global.GPTVersion == GPT_Version.GPT_AZure_3_5)
-            {
-                //chatGPT = new AzureChatCompletion(
-                //"GPT3516K",
-                //"",
-                //"");
-            }
-
             // Check Setting
             if (!CheckSetting())
             {
-                MessageBox.Show("请先填写OpenAI 的API Key参数，再使用本软件。", "提示");
+                MessageBox.Show("请先填写API调用参数，再使用本软件。", "提示");
                 this.Close();
+                return;
+            }
+
+            if (Global.GPTVersion == GPT_Version.GPT_OLLAMA)
+            {
+                chatGPT = new LlamaChatCompletion(Setting.Instance.Llama_Url);
                 return;
             }
 
@@ -98,6 +97,8 @@ namespace ChatAssistant
             proxy.ProxyType = formProxy.ProxyType;
             proxy.ProxyPort = formProxy.ProxyPort;
 
+            Setting.Instance.Llama_Url = configForm.OLLamaUrl;
+
             Setting.Instance.Save();
         }
 
@@ -105,20 +106,43 @@ namespace ChatAssistant
         {
             var gpt = Setting.Instance.GPT;
             var proxy = Setting.Instance.Proxy;
-            if (string.IsNullOrEmpty(gpt.Model) || string.IsNullOrEmpty(gpt.Key))
+
+            if (GPT_Version.GPT_OpenAI_4 == Global.GPTVersion)
             {
-                ConfigForm configForm = new ConfigForm();
-                if (configForm.ShowDialog() == DialogResult.OK)
+                if ((string.IsNullOrEmpty(gpt.Model) || string.IsNullOrEmpty(gpt.Key)))
                 {
-                    SaveSetting(configForm);
+                    ConfigForm configForm = new ConfigForm();
+                    if (configForm.ShowDialog() == DialogResult.OK)
+                    {
+                        SaveSetting(configForm);
+                    }
+                    else
+                    {
+                        return false;
+                    }
                 }
-                else
+
+                return !(string.IsNullOrEmpty(gpt.Model) || string.IsNullOrEmpty(gpt.Key));
+            }
+            if (GPT_Version.GPT_OLLAMA == Global.GPTVersion)
+            {
+                if (string.IsNullOrEmpty(Setting.Instance.Llama_Url))
                 {
-                    return false;
+                    ConfigForm configForm = new ConfigForm();
+                    if (configForm.ShowDialog() == DialogResult.OK)
+                    {
+                        SaveSetting(configForm);
+                    }
+                    else
+                    {
+                        return false;
+                    }
                 }
+
+                return !string.IsNullOrEmpty(Setting.Instance.Llama_Url);
             }
 
-            return !(string.IsNullOrEmpty(gpt.Model) || string.IsNullOrEmpty(gpt.Key));
+            return false;
         }
 
         private async Task InitWebView()
@@ -399,6 +423,22 @@ namespace ChatAssistant
                 }
 
                 return chatHistory;
+            }
+        }
+
+        private void DeleteDialogMessage(int dialogueId)
+        {
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.CommandText = $"DELETE FROM dialogue WHERE id = {dialogueId}";
+                cmd.ExecuteNonQuery();
+            }
+
+            // 删除chatmessage表中的记录
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.CommandText = $"DELETE FROM chatmessage WHERE dialogueId = {dialogueId}";
+                cmd.ExecuteNonQuery();
             }
         }
 
@@ -1192,7 +1232,20 @@ namespace ChatAssistant
         {
             if (MessageBox.Show("是否确定删除对话上下文？", "提示", MessageBoxButtons.YesNo) == DialogResult.Yes)
             {
+                var selectNode = _CurrentNode;
+                if (selectNode != null)
+                {
+                    var tag = selectNode.Tag as TreeViewDialogueTag;
+                    if (tag  != null)
+                    {
+                        // 删除数据库
+                        DeleteDialogMessage(tag.Id);
+                    }
 
+                    // 删除Node
+                    selectNode.Remove();
+                    _CurrentNode = null;
+                }
             }
         }
 

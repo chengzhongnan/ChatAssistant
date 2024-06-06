@@ -28,7 +28,7 @@ namespace ChatAssistant
             GPT.Load(xSetting.Element("gpt"));
             Proxy = new ProxySetting();
             Proxy.Load(xSetting.Element("proxy"));
-
+            Llama_Url = xSetting.Element("llama")?.Value;
         }
 
         public void Save()
@@ -39,12 +39,15 @@ namespace ChatAssistant
             xSetting.RemoveNodes();
             xSetting.Add(GPT.Save());
             xSetting.Add(Proxy.Save());
+            xSetting.Add(new XElement("llama", Llama_Url));
 
             xDoc.Save(configFile);
         }
 
         public GPTSetting GPT { get; set; }
         public ProxySetting Proxy { get; set; }
+
+        public string Llama_Url { get; set; }
 
         public class GPTSetting
         {
@@ -79,14 +82,14 @@ namespace ChatAssistant
             {
                 return new XElement("proxy",
                     new XAttribute("useProxy", UseProxy),
-                    new XAttribute("proxyType", ProxyType),
-                    new XAttribute("proxyIp", ProxyIp),
+                    new XAttribute("proxyType", ProxyType ?? string.Empty),
+                    new XAttribute("proxyIp", ProxyIp ?? string.Empty),
                     new XAttribute("proxyPort", ProxyPort));
             }
 
             public bool UseProxy { get; set; }
-            public string ProxyType { get; set; }
-            public string ProxyIp { get; set; }
+            public string ProxyType { get; set; } = string.Empty;
+            public string ProxyIp { get; set; } = string.Empty;
             public int ProxyPort { get; set; }
         }
     }
